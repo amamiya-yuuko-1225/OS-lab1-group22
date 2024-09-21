@@ -2,8 +2,6 @@
 #include "my.h"
 #include <stdio.h>
 
-extern pid_t bg_processes[MAX_BG];
-
 //parent calls 'waitpid' when child is killed to avoid zombies 
 void child_signal_handler()
 {
@@ -12,16 +10,15 @@ void child_signal_handler()
     while((pid = waitpid(-1, NULL, WNOHANG)) > 0);
 }
 
+//foreground pid
+pid_t fg_pid = -1;
+
 //ctrl-c handler
 void int_signal_handler()
 {
-    pid_t pid = getpid();
-    for (int i = 0; i < MAX_BG; i++) {
-        if (bg_processes[i] == pid) {
-            return;
-        }
+    if (fg_pid > 0) {
+        kill(fg_pid, SIGINT);
     }
-    exit(0);
 }
 
 //set all signal handler
@@ -137,26 +134,13 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
             dup2(pipe_fd[0], STDIN_FILENO);
             close(pipe_fd[1]);
         }
-        //
-        if (command_list->background)
+        //if running foreground
+        if (command_list->background == FALSE)
         {
-            //add to background process list
-            int i = 0;
-            for (i = 0; i < MAX_BG; i++) {
-                if (bg_processes[i] == 0) {
-                    bg_processes[i] = pid;
-                    break;
-                }
-            } 
-            //list full, addition failed
-            if (i == MAX_BG) {
-                perror("bg list full");
-            }
-        }
-        else
-        {
+            fg_pid = pid;
             int status;
             waitpid(pid, &status, 0);
+            fg_pid = getpid();
         }
     }
     else
@@ -175,4 +159,6 @@ void lsh_execute(Command *cmd)
         exit(0);
     }
     cmd_execute(cmd, cmd->pgm, TRUE);
+    //after executing cmd
+    fg_pid = -1;
 }

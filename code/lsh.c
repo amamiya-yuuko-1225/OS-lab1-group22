@@ -34,15 +34,9 @@ static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
 void stripwhite(char *);
 
-pid_t bg_processes[MAX_BG];
-
 int main(void)
 {
-  
   signal_set();
-  memset(bg_processes, 0, sizeof(bg_processes));
-  bg_processes[0] = getpid();
-
   for (;;)
   {
     char *line;
@@ -79,7 +73,6 @@ int main(void)
     free(line);
   }
 
-  free(bg_processes);
   return 0;
 }
 
