@@ -1,0 +1,88 @@
+-- The C compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /tmp/test_lab1_1726907703.5213635
+[ 25%] Building C object CMakeFiles/lsh.dir/parse.c.o
+[ 50%] Building C object CMakeFiles/lsh.dir/lsh.c.o
+[ 75%] Building C object CMakeFiles/lsh.dir/my.c.o
+[100%] Linking C executable lsh
+[100%] Built target lsh
+Unit Test Report
+
+Start Time : 2024-09-21 10:35:03
+
+Duration : 0:00:20.701981
+
+Status : Pass 12 Failure 1
+
+Description : Lab 1 tests
+
+Tested By : Unknown
+
+Show Summary Failed Passed All
+
+Test Group/Test case         Count          Pass        Fail                       Error                           View
+TestLsh                      13             12          1                          0                               Detail
+test_CTRL_C: Simulates a
+CTRL-C interrupt to test                                                                PASS
+lsh's signal handling by                                                                [x]
+running a long sleep command
+and interrupting it.
+                                                                                        FAIL
+                                                                                        [x]
+test_CTRL_C_with_fg_and_bg:
+Tests lsh's response to a                           2024-09-21 10:35:09.143746 : tearDown: lsh is still running, killing it now.
+CTRL-C signal with
+concurrent foreground and                                                Traceback (most recent call last):
+background processes.          File "/mnt/d/chalmers/operating_systems/labs/OS-lab1-group22/tests/test_lsh.py", line 321, in test_CTRL_C_with_fg_and_bg
+                                        self.assertEqual(1, len(lsh_info.children()), msg="There should be only one child process after Ctrl+C")
+                                                    AssertionError: 1 != 0 : There should be only one child process after Ctrl+C
+
+test_bg_and_fg: Runs a                                                                  PASS
+background job and a                                                                    [x]
+foreground command
+simultaneously.
+test_cd: Verifies the                                                                   PASS
+functionality of the 'cd'                                                               [x]
+command in lsh.
+test_date: Runs "date" and                                                              PASS
+then check if the current                                                               [x]
+year appears in stdout.
+test_echo_grep_wc: Validates                                                            PASS
+a complex command pipeline                                                              [x]
+involving 'echo', 'grep',
+and 'wc'.
+test_echo_rev: Tests the                                                                PASS
+pipeline functionality.                                                                 [x]
+
+test_exit_command: Tests                                                                PASS
+that the 'exit' command                                                                 [x]
+properly terminates 'lsh'.
+test_exit_with_CTRL_D: Tests                                                            PASS
+that lsh terminates                                                                     [x]
+correctly when EOF (Ctrl-D)
+is sent to stdin.
+test_for_zombies: Run two                                                               PASS
+consecutive commands and                                                                [x]
+check for their output and
+for zombie processes.
+test_in_and_out_redirection:                                                            PASS
+Tests both input and output                                                             [x]
+redirection together.
+test_input_redirection:                                                                 PASS
+Tests the input redirection                                                             [x]
+capability.
+test_output_redirection:                                                                PASS
+Tests lsh's ability to                                                                  [x]
+handle output redirection.
+Total                        13             12          1                          0                                
+
+
+
+Time Elapsed: 0:00:20.701981
+PPPPPPPPPPPP

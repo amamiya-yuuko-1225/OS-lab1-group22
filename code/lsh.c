@@ -28,17 +28,31 @@
 #include <unistd.h>
 
 #include "parse.h"
+#include "my.h"
 
 static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
 void stripwhite(char *);
 
+pid_t bg_processes[MAX_BG];
+
 int main(void)
 {
+  
+  signal_set();
+  memset(bg_processes, 0, sizeof(bg_processes));
+  bg_processes[0] = getpid();
+
   for (;;)
   {
     char *line;
     line = readline("> ");
+
+    // Ctrl-D EOF
+    if (line == NULL)
+    {
+      exit(0);
+    }
 
     // Remove leading and trailing whitespace from the line
     stripwhite(line);
@@ -53,6 +67,7 @@ int main(void)
       {
         // Just prints cmd
         print_cmd(&cmd);
+        lsh_execute(&cmd);
       }
       else
       {
@@ -64,6 +79,7 @@ int main(void)
     free(line);
   }
 
+  free(bg_processes);
   return 0;
 }
 
@@ -110,7 +126,6 @@ static void print_pgm(Pgm *p)
     printf("]\n");
   }
 }
-
 
 /* Strip whitespace from the start and end of a string.
  *
