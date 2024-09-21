@@ -3,7 +3,11 @@
         "readline.h": "c",
         "parse.h": "c",
         "stdio.h": "c",
-        "wait.h": "c"
+        "wait.h": "c",
+        "my.h": "c",
+        "unistd.h": "c",
+        "signal.h": "c",
+        "shm.h": "c"
     },
     "cmake.sourceDirectory": "/mnt/d/chalmers/operating_systems/labs/OS-lab1-group22/code"
 }

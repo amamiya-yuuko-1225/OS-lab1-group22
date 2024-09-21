@@ -32,10 +32,54 @@
 
 static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
-void stripwhite(char *);
+void stripwhite(char *string);
+
+// All background processes are placed in a group different from shell
+// we denote their group id as 'bg_proc_pgid'
+//there are 3 states for this 'bg_proc_pgid':
+// 1: val == -1, no background processes occurred
+// 2: val != -1, and there exists running background processes
+// 3: val != -1, and all bg processes dead.
+// we use shared memory here, since after fork, the child process will
+// have it's own vitrual memory space, we can't simply use ordinary variables
+// to communicate between each other.
+int bg_proc_pgid_shmid;
+
+pid_t *init_bg_proc_pgid()
+{
+  bg_proc_pgid_shmid = shmget(IPC_PRIVATE, sizeof(pid_t), 0777);
+  if (bg_proc_pgid_shmid == -1)
+  {
+    perror("shared memory failed");
+  }
+
+  pid_t *bg_proc_pgid = (pid_t *)shmat(bg_proc_pgid_shmid, (void *)0, 0);
+  *bg_proc_pgid = -1;
+  return bg_proc_pgid;
+}
+
+void EOF_handler(pid_t *bg_proc_pgid)
+{
+  //kill the background proc group
+  //if the group was created, then try to kill it.
+  //even if the group is empty now(all proc dead)
+  //try to kill a non-exsisting group does not generate any error. 
+  if (*bg_proc_pgid != -1)
+  {
+    kill(-*bg_proc_pgid, SIGINT);
+  }
+  shmdt(bg_proc_pgid);
+  shmctl(bg_proc_pgid_shmid, IPC_RMID, NULL);
+  exit(0);
+}
+
+pid_t shell_pid = -1;
 
 int main(void)
 {
+
+  shell_pid = getpid();
+  pid_t *bg_proc_pgid = init_bg_proc_pgid();
   signal_set();
   for (;;)
   {
@@ -45,7 +89,7 @@ int main(void)
     // Ctrl-D EOF
     if (line == NULL)
     {
-      exit(0);
+      EOF_handler(bg_proc_pgid);
     }
 
     // Remove leading and trailing whitespace from the line

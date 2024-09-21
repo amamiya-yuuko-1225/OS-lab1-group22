@@ -2,34 +2,34 @@
 #include "my.h"
 #include <stdio.h>
 
-//parent calls 'waitpid' when child is killed to avoid zombies 
+// parent calls 'waitpid' when child is killed to avoid zombies
 void child_signal_handler()
 {
     int status;
     pid_t pid;
-    while((pid = waitpid(-1, NULL, WNOHANG)) > 0);
+    while ((pid = waitpid(-1, NULL, WNOHANG)) > 0)
+        ;
 }
 
-//foreground pid
-pid_t fg_pid = -1;
-
-//ctrl-c handler
+// ctrl-c handler for the shell
+// just kill the fg proc, not the shell
 void int_signal_handler()
 {
-    if (fg_pid > 0) {
-        kill(fg_pid, SIGINT);
+    if (getpid() != shell_pid)
+    {
+        exit(0);
     }
 }
 
-//set all signal handler
+// set all signal handler
 void signal_set()
 {
-    signal(SIGCHLD, child_signal_handler); 
+    signal(SIGCHLD, child_signal_handler);
     signal(SIGINT, int_signal_handler);
     return;
 }
 
-//inbuilt command 'cd'
+// inbuilt command 'cd'
 void cd(char *arg)
 {
     if (arg == NULL)
@@ -78,6 +78,25 @@ void io_redirection(Command *command_list)
     }
 }
 
+void add_bg_process()
+{
+    pid_t *bg_proc_pgid = (pid_t *)shmat(bg_proc_pgid_shmid, (void *)0, 0);
+    // the proc group exists, than add to it
+    if (*bg_proc_pgid != -1 && setpgid(getpid(), *bg_proc_pgid) == 0)
+    {
+        return;
+    }
+
+    //else, create a new group
+    if (setpgid(0, 0) == -1)
+    {
+        perror("bg proc group falied");
+    }
+    *bg_proc_pgid = getpid();
+
+    shmdt(bg_proc_pgid);
+}
+
 void cmd_execute(Command *command_list, Pgm *current, int root)
 {
     // if running other foreground processes, the shell should ignore SIGINT
@@ -97,10 +116,17 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
     if (pid == 0)
     {
         // child
-        // output redirection
+        // deal with background processes
+        // add to bg_proc_group
+        if (root && command_list->background)
+        {
+            add_bg_process();
+        }
+
         if (!root)
         {
-            // if not the last cmd, redirect to pipe sharing with the prior cmd
+            // output redirect
+            // if not the last cmd, redirect to pipe sharing with the prior(parent) cmd
             dup2(pipe_fd[1], STDOUT_FILENO);
             close(pipe_fd[0]);
         }
@@ -134,13 +160,11 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
             dup2(pipe_fd[0], STDIN_FILENO);
             close(pipe_fd[1]);
         }
-        //if running foreground
         if (command_list->background == FALSE)
         {
-            fg_pid = pid;
+            // if running foreground
             int status;
             waitpid(pid, &status, 0);
-            fg_pid = getpid();
         }
     }
     else
@@ -159,6 +183,5 @@ void lsh_execute(Command *cmd)
         exit(0);
     }
     cmd_execute(cmd, cmd->pgm, TRUE);
-    //after executing cmd
-    fg_pid = -1;
+    // after executing cmd
 }
