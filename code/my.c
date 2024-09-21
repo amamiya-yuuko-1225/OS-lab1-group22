@@ -2,23 +2,33 @@
 #include "my.h"
 #include <stdio.h>
 
+void EOF_handler(Bg_proc *bg_proc)
+{
+    while (bg_proc != NULL)
+    {
+        if (bg_proc->pid > 0)
+        {
+            kill(bg_proc->pid, SIGTERM);
+        }
+        bg_proc = bg_proc->next;
+    }
+    exit(0);
+}
+
 // parent calls 'waitpid' when child is killed to avoid zombies
 void child_signal_handler()
 {
-    int status;
     pid_t pid;
     while ((pid = waitpid(-1, NULL, WNOHANG)) > 0)
-        ;
+    {
+        remove_bg_process(bg_proc_head, pid);
+    }
 }
 
 // ctrl-c handler for the shell
-// just kill the fg proc, not the shell
 void int_signal_handler()
 {
-    if (getpid() != shell_pid)
-    {
-        exit(0);
-    }
+    printf("\n>");
 }
 
 // set all signal handler
@@ -78,23 +88,32 @@ void io_redirection(Command *command_list)
     }
 }
 
-void add_bg_process()
+void add_bg_process(Bg_proc *bg_proc, pid_t pid)
 {
-    pid_t *bg_proc_pgid = (pid_t *)shmat(bg_proc_pgid_shmid, (void *)0, 0);
-    // the proc group exists, than add to it
-    if (*bg_proc_pgid != -1 && setpgid(getpid(), *bg_proc_pgid) == 0)
+    while (bg_proc->next != NULL)
+    {
+        bg_proc = bg_proc->next;
+    }
+    Bg_proc *newone = (Bg_proc *)malloc(sizeof(Bg_proc));
+    newone -> next = NULL;
+    newone -> pid = pid;
+    bg_proc->next = newone;
+}
+
+void remove_bg_process(Bg_proc *bg_proc, pid_t pid)
+{
+    Bg_proc *p = bg_proc;
+    while (p->next != NULL && p->next->pid != pid)
+    {
+        p = p->next;
+    }
+    if (p->next == NULL)
     {
         return;
     }
-
-    //else, create a new group
-    if (setpgid(0, 0) == -1)
-    {
-        perror("bg proc group falied");
-    }
-    *bg_proc_pgid = getpid();
-
-    shmdt(bg_proc_pgid);
+    Bg_proc *target = p->next;
+    p->next = target->next;
+    free(target);
 }
 
 void cmd_execute(Command *command_list, Pgm *current, int root)
@@ -116,11 +135,10 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
     if (pid == 0)
     {
         // child
-        // deal with background processes
-        // add to bg_proc_group
-        if (root && command_list->background)
+        // if background, ignore SIGINT
+        if (command_list->background)
         {
-            add_bg_process();
+            signal(SIGINT, SIG_IGN);
         }
 
         if (!root)
@@ -160,7 +178,11 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
             dup2(pipe_fd[0], STDIN_FILENO);
             close(pipe_fd[1]);
         }
-        if (command_list->background == FALSE)
+        if (command_list->background)
+        {
+            add_bg_process(bg_proc_head, pid);
+        }
+        else
         {
             // if running foreground
             int status;
