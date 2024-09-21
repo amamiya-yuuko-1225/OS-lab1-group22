@@ -32,11 +32,21 @@
 
 static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
-void stripwhite(char *);
+void stripwhite(char *string);
+
+Bg_proc* bg_proc_head;
+
+pid_t shell_pid = -1;
 
 int main(void)
 {
+  bg_proc_head = (Bg_proc *)malloc(sizeof(Bg_proc));
+  bg_proc_head -> pid = -1000;
+  bg_proc_head -> next = NULL;
+  
+  shell_pid = getpid();
   signal_set();
+
   for (;;)
   {
     char *line;
@@ -45,7 +55,7 @@ int main(void)
     // Ctrl-D EOF
     if (line == NULL)
     {
-      exit(0);
+      EOF_handler(bg_proc_head);
     }
 
     // Remove leading and trailing whitespace from the line

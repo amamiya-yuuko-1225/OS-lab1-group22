@@ -2,34 +2,44 @@
 #include "my.h"
 #include <stdio.h>
 
-//parent calls 'waitpid' when child is killed to avoid zombies 
-void child_signal_handler()
+void EOF_handler(Bg_proc *bg_proc)
 {
-    int status;
-    pid_t pid;
-    while((pid = waitpid(-1, NULL, WNOHANG)) > 0);
+    while (bg_proc != NULL)
+    {
+        if (bg_proc->pid > 0)
+        {
+            kill(bg_proc->pid, SIGTERM);
+        }
+        bg_proc = bg_proc->next;
+    }
+    exit(0);
 }
 
-//foreground pid
-pid_t fg_pid = -1;
-
-//ctrl-c handler
-void int_signal_handler()
+// parent calls 'waitpid' when child is killed to avoid zombies
+void child_signal_handler()
 {
-    if (fg_pid > 0) {
-        kill(fg_pid, SIGINT);
+    pid_t pid;
+    while ((pid = waitpid(-1, NULL, WNOHANG)) > 0)
+    {
+        remove_bg_process(bg_proc_head, pid);
     }
 }
 
-//set all signal handler
+// ctrl-c handler for the shell
+void int_signal_handler()
+{
+    printf("\n>");
+}
+
+// set all signal handler
 void signal_set()
 {
-    signal(SIGCHLD, child_signal_handler); 
+    signal(SIGCHLD, child_signal_handler);
     signal(SIGINT, int_signal_handler);
     return;
 }
 
-//inbuilt command 'cd'
+// inbuilt command 'cd'
 void cd(char *arg)
 {
     if (arg == NULL)
@@ -78,6 +88,34 @@ void io_redirection(Command *command_list)
     }
 }
 
+void add_bg_process(Bg_proc *bg_proc, pid_t pid)
+{
+    while (bg_proc->next != NULL)
+    {
+        bg_proc = bg_proc->next;
+    }
+    Bg_proc *newone = (Bg_proc *)malloc(sizeof(Bg_proc));
+    newone -> next = NULL;
+    newone -> pid = pid;
+    bg_proc->next = newone;
+}
+
+void remove_bg_process(Bg_proc *bg_proc, pid_t pid)
+{
+    Bg_proc *p = bg_proc;
+    while (p->next != NULL && p->next->pid != pid)
+    {
+        p = p->next;
+    }
+    if (p->next == NULL)
+    {
+        return;
+    }
+    Bg_proc *target = p->next;
+    p->next = target->next;
+    free(target);
+}
+
 void cmd_execute(Command *command_list, Pgm *current, int root)
 {
     // if running other foreground processes, the shell should ignore SIGINT
@@ -97,10 +135,16 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
     if (pid == 0)
     {
         // child
-        // output redirection
+        // if background, ignore SIGINT
+        if (command_list->background)
+        {
+            signal(SIGINT, SIG_IGN);
+        }
+
         if (!root)
         {
-            // if not the last cmd, redirect to pipe sharing with the prior cmd
+            // output redirect
+            // if not the last cmd, redirect to pipe sharing with the prior(parent) cmd
             dup2(pipe_fd[1], STDOUT_FILENO);
             close(pipe_fd[0]);
         }
@@ -134,13 +178,15 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
             dup2(pipe_fd[0], STDIN_FILENO);
             close(pipe_fd[1]);
         }
-        //if running foreground
-        if (command_list->background == FALSE)
+        if (command_list->background)
         {
-            fg_pid = pid;
+            add_bg_process(bg_proc_head, pid);
+        }
+        else
+        {
+            // if running foreground
             int status;
             waitpid(pid, &status, 0);
-            fg_pid = getpid();
         }
     }
     else
@@ -159,6 +205,5 @@ void lsh_execute(Command *cmd)
         exit(0);
     }
     cmd_execute(cmd, cmd->pgm, TRUE);
-    //after executing cmd
-    fg_pid = -1;
+    // after executing cmd
 }
