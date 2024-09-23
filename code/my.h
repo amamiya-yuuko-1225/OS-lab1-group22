@@ -28,9 +28,7 @@ typedef struct bg_proc {
 
 extern Bg_proc* bg_proc_head;
 
-extern pid_t shell_pid;
-
-void lsh_execute(Command *cmd_list);
+void cmd_execute(Command *cmd_list);
 
 void signal_set();
 

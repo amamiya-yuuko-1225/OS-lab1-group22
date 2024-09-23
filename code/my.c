@@ -2,36 +2,52 @@
 #include "my.h"
 #include <stdio.h>
 
+//handle EOF (ctrl-d)
+//exit the shell and kill all background processes
 void EOF_handler(Bg_proc *bg_proc)
 {
+    //iterate all background processes
     while (bg_proc != NULL)
     {
+        //exclude invalid pid, such as dummy head
         if (bg_proc->pid > 0)
         {
-            kill(bg_proc->pid, SIGTERM);
+            if (kill(bg_proc->pid, SIGTERM) < 0) {
+                perror("kill bg proc error before exiting shell");
+            } 
         }
         bg_proc = bg_proc->next;
     }
     exit(0);
 }
 
-// parent calls 'waitpid' when child is killed to avoid zombies
+// SIGCHILD hanlder for the shell.
+// when child process exited,
+// shell captures the SIGCHILD signal and
+// use 'waitpid' to remove child processes from 
+// the process table to avoid zombies
 void child_signal_handler()
 {
     pid_t pid;
+    //iterate all children
     while ((pid = waitpid(-1, NULL, WNOHANG)) > 0)
     {
         remove_bg_process(bg_proc_head, pid);
     }
 }
 
-// ctrl-c handler for the shell
+// ctrl-c(SIGINT) handler for the shell.
+// the shell just have to ignore it.
+// Other foreground processes(cmds) just behave as default, i.e., 
+// being killed by SIGINT.
+// The background processes(cmds) should ignore it. This is set 
+// when a background process is forked. See the code below.
 void int_signal_handler()
 {
     printf("\n>");
 }
 
-// set all signal handler
+// set all signal handlers for shell
 void signal_set()
 {
     signal(SIGCHLD, child_signal_handler);
@@ -44,25 +60,28 @@ void cd(char *arg)
 {
     if (arg == NULL)
     {
-        printf("insufficient arguments\n");
+        perror("Insufficient arguments\n");
     }
     else
     {
         int cond;
+        //just use the chdir system call
         cond = chdir(arg);
         if (cond == -1)
         {
-            printf("wrong path\n");
+            perror("Wrong path\n");
         }
     }
 }
 
-// check if a cmd is inbuilt (except for 'exit');
-// if yes, execute it and return 1; else return 0
+// check if a cmd is inbuilt and run it(except for 'exit');
+// if it's inbuilt, execute it and return 1;
+// if it's not inbuilt, return 0
+
 int execute_inbuilt(char **pgmlist)
 {
-
-    if (strcmp(pgmlist[0], "cd") == 0) //
+    //check if 'cd'
+    if (strcmp(pgmlist[0], "cd") == 0) 
     {
         cd(pgmlist[1]);
         return 1;
@@ -70,6 +89,7 @@ int execute_inbuilt(char **pgmlist)
     return 0;
 }
 
+//To set i/o redirections
 void io_redirection(Command *command_list)
 {
     if (command_list->rstdout != NULL)
@@ -88,6 +108,9 @@ void io_redirection(Command *command_list)
     }
 }
 
+// Add background processes to the list
+// Bg_proc *bg_proc: dummy head of the bg_proc list 
+// pid: pid to be added
 void add_bg_process(Bg_proc *bg_proc, pid_t pid)
 {
     while (bg_proc->next != NULL)
@@ -100,6 +123,7 @@ void add_bg_process(Bg_proc *bg_proc, pid_t pid)
     bg_proc->next = newone;
 }
 
+//Remove specified process from the list
 void remove_bg_process(Bg_proc *bg_proc, pid_t pid)
 {
     Bg_proc *p = bg_proc;
@@ -116,26 +140,32 @@ void remove_bg_process(Bg_proc *bg_proc, pid_t pid)
     free(target);
 }
 
-void cmd_execute(Command *command_list, Pgm *current, int root)
+//Execute programs in a recursive fasion.
+//Pgm *current: the current program to be executed.
+//int root: If root == TURE, the function is called by shell.
+void pgm_execute(Command *command_list, Pgm *current, int root)
 {
-    // if running other foreground processes, the shell should ignore SIGINT
+    //exit of recursion
     if (current == NULL)
     {
         return;
     }
 
+    //creating pipes used to communicate with 
+    //preceding programs (child processes) in a pipeline fasion.
     int pipe_fd[2];
     if (pipe(pipe_fd) == -1)
     {
-        perror("pipe");
+        perror("Pipe error:");
     }
 
+    //fork a new process to execute the Pgm *current
     pid_t pid = fork();
 
     if (pid == 0)
     {
-        // child
-        // if background, ignore SIGINT
+        // child process here
+        // if running in background, ignore SIGINT
         if (command_list->background)
         {
             signal(SIGINT, SIG_IGN);
@@ -143,23 +173,25 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
 
         if (!root)
         {
-            // output redirect
-            // if not the last cmd, redirect to pipe sharing with the prior(parent) cmd
+            // If not the last program, redirect child's output to pipe's write end
+            // The pipe is shared with the preceding program (parent process).
             dup2(pipe_fd[1], STDOUT_FILENO);
+            // close the read end of the pipe
             close(pipe_fd[0]);
         }
         else
         {
-            // redirection for the last cmd
+            // Set i/o redirection for the command immediately after the fork of shell
             io_redirection(command_list);
         }
 
-        // execute former cmds recursively.
-        cmd_execute(command_list, current->next, FALSE);
+        // execute preceding programs recursively.
+        pgm_execute(command_list, current->next, FALSE);
 
         // execute inbuilt or ordinary program
         if (!execute_inbuilt(current->pgmlist))
         {
+            // if not inbuilt, use execvp to run it.
             if (execvp(current->pgmlist[0], current->pgmlist) == -1)
             {
                 // execution error
@@ -170,40 +202,44 @@ void cmd_execute(Command *command_list, Pgm *current, int root)
     }
     else if (pid > 0)
     {
-        // parent
-        // input redirection
+        // parent process here.
         if (!root)
         {
-            // if not the shell, redirect to pipe
+            // if not the shell, redirect parent's input to pipe's read end.
             dup2(pipe_fd[0], STDIN_FILENO);
+            // close write end.
             close(pipe_fd[1]);
         }
         if (command_list->background)
         {
+            // if child is running in background, add it to the bg_proc list.
             add_bg_process(bg_proc_head, pid);
         }
         else
         {
-            // if running foreground
+            // if child is running foreground, the parent should wait for it's exit.
             int status;
-            waitpid(pid, &status, 0);
+            if (waitpid(pid, &status, 0) != pid) {
+                perror("Wait child process failed:");
+            }
         }
     }
     else
     {
-        perror("fork failed");
+        perror("Fork failed:");
     }
 }
 
-void lsh_execute(Command *cmd)
+//The entrance when start to execute a command.
+void cmd_execute(Command *cmd)
 {
-    // inbuilt cmd 'exit' is specially treatet
-    // since exit(0) does not work properly in child process
+    // inbuilt cmd 'exit' is specially treated here
+    // since we should call exit(0) at shell process.
     if (strcmp(cmd->pgm->pgmlist[0], "exit") == 0) // exit shell
     {
-        puts("exiting lsh···");
+        puts("Exiting lsh···");
         exit(0);
     }
-    cmd_execute(cmd, cmd->pgm, TRUE);
-    // after executing cmd
+    //Execute programs recursivly.
+    pgm_execute(cmd, cmd->pgm, TRUE);
 }

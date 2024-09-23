@@ -34,17 +34,22 @@ static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
 void stripwhite(char *string);
 
+//before exiting the shell using EOF(ctrl-d), 
+//we should kill all background processes.
+//we store their pids in a linked list. 
+//here is the dummy head.
 Bg_proc* bg_proc_head;
-
-pid_t shell_pid = -1;
 
 int main(void)
 {
+  //init the dummy head of bg_proc list
   bg_proc_head = (Bg_proc *)malloc(sizeof(Bg_proc));
-  bg_proc_head -> pid = -1000;
+  //pid == -1 identifies the dummy head
+  bg_proc_head -> pid = -1;
   bg_proc_head -> next = NULL;
   
-  shell_pid = getpid();
+  //set signal handlers for SIGINT(ctrl-c)
+  //and SIGCHILD(to avoid zombies)
   signal_set();
 
   for (;;)
@@ -52,7 +57,7 @@ int main(void)
     char *line;
     line = readline("> ");
 
-    // Ctrl-D EOF
+    // exit with Ctrl-D EOF
     if (line == NULL)
     {
       EOF_handler(bg_proc_head);
@@ -71,7 +76,9 @@ int main(void)
       {
         // Just prints cmd
         print_cmd(&cmd);
-        lsh_execute(&cmd);
+        //execute cmd
+        //core part of the task
+        cmd_execute(&cmd);
       }
       else
       {
