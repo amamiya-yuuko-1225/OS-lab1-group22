@@ -94,14 +94,12 @@ void io_redirection(Command *command_list)
 {
     if (command_list->rstdout != NULL)
     {
-        // if the last cmd, redirect to given parameter
         int out = open(command_list->rstdout, O_WRONLY | O_CREAT, 0777);
         dup2(out, STDOUT_FILENO);
         close(out);
     }
     if (command_list->rstdin != NULL)
     {
-        // if the last cmd, redirect to given parameter
         int in = open(command_list->rstdin, O_RDONLY);
         dup2(in, STDIN_FILENO);
         close(in);
