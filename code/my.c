@@ -22,9 +22,9 @@ void EOF_handler(Bg_proc *bg_proc)
     exit(0);
 }
 
-// SIGCHILD hanlder for the shell.
+// SIGCHILD hanlder for all processes.
 // when child process exited,
-// shell captures the SIGCHILD signal and
+// parent captures the SIGCHILD signal and
 // use 'waitpid' to remove child processes from 
 // the process table to avoid zombies
 void child_signal_handler()
@@ -164,6 +164,8 @@ void pgm_execute(Command *command_list, Pgm *current, int root)
     if (pid == 0)
     {
         // child process here
+        // for child process, set SIGCHID handler too.
+        signal(SIGCHLD, child_signal_handler);
         // if running in background, ignore SIGINT
         if (command_list->background)
         {

@@ -36,6 +36,7 @@ The structure of `pgm_execute()`:
 pid = fork();
 pipe();// create pipe
 if (pid == 0) {
+    set_SIGCHILD_handler(); // to avoid zombies
 	if (cmd -> background) {
 		ignore_SIGINT(); // bg proc ingore SIGINT
 	}
@@ -133,9 +134,9 @@ It receives the path of the program (absolute path, or environment variable `PAT
 
 When the command needs to be run in foreground, the parent process has to be blocked and call `waitpid()` or `wait()` to wait for its child to exit; when the command needs to be run in background, the parent process should not be blocked by the child process. 
 
-**However, even if the parent process cannot be block by the background child process itself, it may be blocked by `pipe` operation**, since parent process may need to read the output of its child process, and if the pipe is empty, the parent will be blocked. This feature guarantees the right execution order of background commands with pipes. 
+However, even if the parent process cannot be block by the background child process itself, it may be blocked by `pipe` operation, since parent process may need to read the output of its child process, and if the pipe is empty, the parent will be blocked. This feature guarantees the right execution order of background commands with pipes. 
 
-For the shell, specifically, if its children are running background, there is no way they cannot block it. 
+For the shell, specifically, if its children are running background, there is no way they can block it. 
 
 ```c
 if (command_list->background)
@@ -160,9 +161,9 @@ However, when parent processes do not call `wait()` or `waitpid()` to retrieve c
 To handle the end events of child processes, in the `child_signal_handler` function, we continuously call `waitpid()` to ensure the parent process who captured `SIGCHILD` retrieves the `PIDs` of all finished child processes and remove them from the process table to avoid zombies. Moreover, we also remove all finished child processes from the background process list, which serves for `EOF` handling.
 
 ```c
-// SIGCHILD hanlder for the shell.
+// SIGCHILD hanlder for all processes.
 // when child process exited,
-// shell captures the SIGCHILD signal and
+// parent captures the SIGCHILD signal and
 // use 'waitpid' to remove child processes from 
 // the process table to avoid zombies
 void child_signal_handler()
@@ -393,7 +394,7 @@ void EOF_handler(pid_t *bg_proc_pgid)
 
 This implementation passed all the tests (old version). However, it has a fatal bug in it.
 
-**If the final process in the group exited, the stored `PGID` remains unchanged. If we exit the shell right now, the `kill` function will work on that group. Unfortunately, the `PGID` may be assigned to another process group by the operating system, so in this case this code will randomly kill some processes, which causes a big problem.**
+If the final process in the group exited, the stored `PGID` remains unchanged. If we exit the shell right now, the `kill` function will work on that group. Unfortunately, the `PGID` may be assigned to another process group by the operating system, so in this case this code will randomly kill some processes, which causes a big problem.
 
 ### 3.2 Blocking or not when executing background commands with both pipes?
 
@@ -409,12 +410,34 @@ Actually, in the very beginning, we do not want to execute programs recursively,
 
 However, we still chose the more challenging way to solve this problem, and we did it.
 
+### 3.4 How to design the recursion? Parent calls `fork ()`or child calls `fork()`?
+
+In our implementation, we chose to let child processes fork their child process.
+
+Take `pgm 1 | pgm 2 ` for example, we have `shell -> pgm2 -> pgm1`. For all commands, only the last program is the child of shell.
+
+However, if we let parent processes fork again, all programs in a single command will be children of shell.
+
+This difference makes orphan and zombie treatment a little bit tricky.
+
+To avoid zombies, we just have to set `SIGCHILD` handler for all parents. If parents fork, we only need to set this handler to shell. However, in our implementation, all processes should be set this handler.
+
+For orphan treatment, if parents fork, we only care about shell exiting before all its children. However, in our implementation, take  `pgm 1 | pgm 2 ` for example, we have `shell -> pgm2 -> pgm1`. When `pgm 2` is killed,  we have several conditions:
+
+1. If the command is running in background, `pgm 1` will be killed before exiting shell since it is in the `bg_proc` list, though it will temporarily become an orphan. 
+
+2. If the command is running in foreground, and `pgm 2` is killed by some signal like `SIGINT`, then as its child, `pgm 1` will be killed too.
+3. If the command is running in foreground, and `pgm 2` is killed by `kill()`, then `pgm 1` will become an orphan, and since it is not in the `bg_proc` list, it will remain alive even if shell is exited.
+
+For condition 3, we still have problems about it.
+
 ## 4. Potential Improvements
 
-1. Inbuilt command `exit` should work in the same way as `EOF handler` (it is easy to fix, but we are close to the deadline, unfortunately).
-2. Implement `nonhup` feature to leave background processes alive when exiting shell.
-3. Implement other fancy features in modern shell, such as font and color customization, automatic command completion, git status presentation, etc.
-4. Improve the code structure, do some decoupling, and make the comments more professional.
+1. As mentioned in section 3.4, the extreme condition 3 make cause orphan exist after the shell is exited. We can change our way of recursion, or refactor it to iterative fashion.
+2. Inbuilt command `exit` should work in the same way as `EOF handler` (it is easy to fix, but we are close to the deadline, unfortunately).
+3. Implement `nonhup` feature to leave background processes alive when exiting shell.
+4. Implement other fancy features in modern shell, such as font and color customization, automatic command completion, git status presentation, etc.
+5. Improve the code structure, do some decoupling, and make the comments more professional.
 
 ## 5. Discussion and Feedback
 1. Maybe change tests near the deadline is a little bit scary.
