@@ -18,6 +18,7 @@ void EOF_handler(Bg_proc *bg_proc)
         }
         bg_proc = bg_proc->next;
     }
+    //exit shell
     exit(0);
 }
 

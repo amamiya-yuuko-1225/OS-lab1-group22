@@ -22,8 +22,8 @@
 #define FALSE 0
 
 typedef struct bg_proc {
-    pid_t pid;
-    struct bg_proc *next;
+    pid_t pid; //pid for bg proc, or pid == -1 indicates dummy head.
+    struct bg_proc *next
 } Bg_proc;
 
 extern Bg_proc* bg_proc_head;
